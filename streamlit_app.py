@@ -109,4 +109,4 @@ def main():
                 st.error(f'Lỗi khi dự đoán: {e}')
 
 if __name__ == '__main__':
-    main(_)
+    main()
