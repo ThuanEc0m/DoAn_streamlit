@@ -14,6 +14,7 @@ import monitor
 import streamlit.components.v1 as components
 from ydata_profiling import ProfileReport
 from ui_theme import render_sidebar_lottie
+from shap_explainer import get_shap_explainer, explain_with_shap
 
 
 
