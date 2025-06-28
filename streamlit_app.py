@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import cloudpickle
 import os
-import sqlalchemy
 import requests
 from streamlit_echarts import st_echarts
 import matplotlib.pyplot as plt
@@ -55,25 +54,6 @@ def load_file(file):
     if file.name.endswith(".csv"): return pd.read_csv(file)
     return pd.read_excel(file, engine="openpyxl")
 
-@st.cache_data(show_spinner=False)
-def load_mysql(host, port, user, pwd, db, table):
-    uri = f"mysql+mysqlconnector://{user}:{pwd}@{host}:{port}/{db}"
-    eng = sqlalchemy.create_engine(uri)
-    return pd.read_sql_table(table, eng)
-
-@st.cache_data(show_spinner=False)
-def load_postgres(host, port, user, pwd, db, table):
-    uri = f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"
-    eng = sqlalchemy.create_engine(uri)
-    return pd.read_sql_table(table, eng)
-
-@st.cache_data(show_spinner=False)
-def load_api(url):
-    resp = requests.get(url, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
-    return pd.json_normalize(data)
-
 # Auto EDA: YData Profiling
 def run_ydata_profiling(df):
     st.subheader("📊 Auto-EDA với YData Profiling")
@@ -97,47 +77,11 @@ def main():
 
     
 # Sau đó mới đến phần chọn nguồn dữ liệu
-    st.sidebar.header(" 1️⃣ Chọn nguồn dữ liệu")
-    source = st.sidebar.selectbox("Data source", ["File Upload", "MySQL", "PostgreSQL", "API"])
+    st.sidebar.header(" 1️⃣ Chọn dữ liệu đầu vào")
     df = None
-    if source == "File Upload":
-        f = st.sidebar.file_uploader("Chọn file CSV/Excel", type=["csv", "xls", "xlsx"])
-        if f: df = load_file(f)
-    elif source == "MySQL":
-        host = st.sidebar.text_input("MySQL host", "localhost")
-        port = st.sidebar.text_input("Port", "3306")
-        user = st.sidebar.text_input("User", "")
-        pwd  = st.sidebar.text_input("Password", "", type="password")
-        db   = st.sidebar.text_input("Database", "")
-        table= st.sidebar.text_input("Table", "")
-        if st.sidebar.button("Load MySQL"):
-            try:
-                df = load_mysql(host, port, user, pwd, db, table)
-                st.sidebar.success("✅ Load thành công")
-            except Exception as e:
-                st.sidebar.error(f"Lỗi: {e}")
-    elif source == "PostgreSQL":
-        host = st.sidebar.text_input("Postgres host", "localhost")
-        port = st.sidebar.text_input("Port", "5432")
-        user = st.sidebar.text_input("User", "")
-        pwd  = st.sidebar.text_input("Password", "", type="password")
-        db   = st.sidebar.text_input("Database", "")
-        table= st.sidebar.text_input("Table", "")
-        if st.sidebar.button("Load Postgres"):
-            try:
-                df = load_postgres(host, port, user, pwd, db, table)
-                st.sidebar.success("✅ Load thành công")
-            except Exception as e:
-                st.sidebar.error(f"Lỗi: {e}")
-    else:
-        url = st.sidebar.text_input("API URL endpoint", "")
-        if st.sidebar.button("Load API"):
-            try:
-                df = load_api(url)
-                st.sidebar.success("✅ API loaded!")
-            except Exception as e:
-                st.sidebar.error(f"Lỗi: {e}")
-
+    f = st.sidebar.file_uploader("📁 Chọn file CSV hoặc Excel", type=["csv", "xls", "xlsx"])
+    if f:
+        df = load_file(f)
         # Nếu dữ liệu đã nạp và có cột 'deposit' → chia train-test
     if df is not None and 'deposit' in df.columns:
         from sklearn.model_selection import train_test_split
