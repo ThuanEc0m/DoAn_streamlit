@@ -113,9 +113,9 @@ def train_and_evaluate(models, X_train, y_train, X_test, y_test, show_shap):
                 st.error(f"❌ SHAP lỗi với mô hình {name}: {e}")
 
     ax.plot([0, 1], [0, 1], linestyle="--", color="gray")
-    ax.set_xlabel("False Positive Rate")
-    ax.set_ylabel("True Positive Rate")
-    ax.set_title("ROC Curve")
+    ax.set_xlabel("Tỉ lệ âm sai-FPR")
+    ax.set_ylabel("Tỉ lệ dương đúng-TPR")
+    ax.set_title("Biểu đồ quan hệ ROC Curve")
     ax.legend()
 
     return pd.DataFrame(results), roc_fig, shap_charts
@@ -138,6 +138,9 @@ def plot_confusion_matrix_grid(models, X_test, y_test):
 # Trang chính
 def render_comparison_page():
     st.header("📈 So sánh các mô hình ML")
+    # Hiển thị thời gian nếu có
+    if "model_compare_duration" in st.session_state:
+        st.info(f"⏱️ Thời gian tải mô hình: {st.session_state.model_compare_duration:.2f} giây")
 
     X_train = st.session_state.get("X_train")
     X_test = st.session_state.get("X_test")

@@ -14,7 +14,8 @@ import streamlit.components.v1 as components
 from ydata_profiling import ProfileReport
 from ui_theme import render_sidebar_lottie
 from shap_explainer import get_shap_explainer, explain_with_shap
-
+import time
+from campaign_analysis import render_campaign_analysis
 
 
 # GỌI NGAY ĐẦU TIÊN
@@ -77,12 +78,32 @@ def main():
 
     
 # Sau đó mới đến phần chọn nguồn dữ liệu
-    st.sidebar.header(" 1️⃣ Chọn dữ liệu đầu vào")
-    df = None
-    f = st.sidebar.file_uploader("📁 Chọn file CSV hoặc Excel", type=["csv", "xls", "xlsx"])
-    if f:
-        df = load_file(f)
-        # Nếu dữ liệu đã nạp và có cột 'deposit' → chia train-test
+    st.sidebar.header("1️⃣ Chọn dữ liệu đầu vào")
+
+    df = None  # ✅ Đảm bảo biến df luôn được định nghĩa
+
+    f = st.sidebar.file_uploader("📁 Chọn file dữ liệu", type=["csv", "xlsx"])
+    if f is not None:
+        file_bytes = f.getvalue()
+        file_hash = hash(file_bytes)
+
+        if "file_hash" not in st.session_state or st.session_state.file_hash != file_hash:
+            df = load_file(f)
+            st.session_state.df = df
+            st.session_state.file_hash = file_hash
+            st.success("✅ File đã được tải lại.")
+        else:
+            st.info("ℹ️ File không đổi, giữ nguyên dữ liệu cũ.")
+            df = st.session_state.df  # ✅ Phải gán lại vào df!
+
+        if "df" in st.session_state:
+            df = st.session_state.df
+
+        if st.button("🔄 Làm mới dữ liệu"):
+            st.session_state.file_hash = None
+            st.rerun()
+            
+# Nếu dữ liệu đã nạp và có cột 'deposit' → chia train-test
     if df is not None and 'deposit' in df.columns:
         from sklearn.model_selection import train_test_split
 
@@ -138,6 +159,7 @@ def main():
             "🔬 So sánh",
             "📈 Theo dõi mô hình",
             "🧩 Phân tích EDA tự động",
+            "📉 Hiệu quả chiến dịch",
             "📈 Model comparison"
         ],
         key="func_select",
@@ -187,7 +209,7 @@ def main():
     elif page == "📈 Báo cáo tổng quan":
         st.markdown("### Tổng quan dữ liệu")
         total = len(df)
-        if 'deposit' in df.columns:
+        if 'deposit' in df.columns and df['deposit'].isin(['yes', 'no', 0, 1]).any():
             opened = df['deposit'].isin(['yes', 1]).sum()
             not_opened = total - opened
             ratio = (opened / total) * 100 if total > 0 else 0
@@ -198,7 +220,7 @@ def main():
                 - **Tỉ lệ mở:** {ratio:.2f}%
             """)
         else:
-            st.warning("⛔ File không có cột deposit – không thể phân tích tỷ lệ mở sổ.")
+             st.info("ℹ️ Không có dữ liệu nhãn rõ ràng để phân tích tỷ lệ mở sổ.")
         cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
         num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
         col1, col2 = st.columns(2, gap="large")
@@ -302,7 +324,7 @@ def main():
         st.write(df.describe(include="all"))
         st.markdown("### Tổng quan dữ liệu")
         total = len(df)
-        if 'deposit' in df.columns:
+        if 'deposit' in df.columns and df['deposit'].isin(['yes', 'no', 0, 1]).any():
             opened = df['deposit'].isin(['yes', 1]).sum()
             not_opened = total - opened
             ratio = (opened / total) * 100 if total > 0 else 0
@@ -313,8 +335,7 @@ def main():
                 - **Tỉ lệ mở:** {ratio:.2f}%
             """)
         else:
-            st.warning("⛔ File không có cột deposit – không thể phân tích tỷ lệ mở sổ.")
-
+            st.info("ℹ️ Không có dữ liệu nhãn rõ ràng để phân tích tỷ lệ mở sổ.")
         cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
         num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
         col1, col2 = st.columns(2, gap="large")
@@ -490,44 +511,52 @@ def main():
                     st.success("✅ Dự đoán & log nhóm thành công!")
                 except Exception as e:
                     st.error(f"❌ Lỗi khi dự đoán nhóm: {e}")
-# --- 3. Dự đoán batch ---
+# --- 3. Dự đoán batch nâng cấp ---
         elif mode == "Dự đoán batch":
             file_batch = st.file_uploader("📁 Chọn file batch (.csv hoặc .xlsx):", type=["csv", "xlsx"])
+            
             if file_batch:
                 try:
+                    # Đọc file
                     if file_batch.name.endswith('.csv'):
                         df_batch = pd.read_csv(file_batch)
                     else:
                         df_batch = pd.read_excel(file_batch)
 
-                    preds = model.predict(df_batch[feature_names])
+                    # Dự đoán xác suất
+                    probs = model.predict_proba(df_batch[feature_names])[:, 1]
+                    preds = (probs >= 0.5).astype(int)
+
+                    # Thêm cột kết quả
+                    df_batch["Xác suất mở (%)"] = (probs * 100).round(2)
                     df_batch["Dự đoán"] = ["Có mở" if p == 1 else "Không mở" for p in preds]
+
+                    # Hiển thị toàn bộ kết quả
+                    st.subheader("📋 Kết quả dự đoán toàn bộ:")
                     st.dataframe(df_batch)
 
-                    csv = df_batch.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("📥 Tải kết quả", data=csv, file_name="ketqua_batch.csv", mime="text/csv")
-                except Exception as e:
-                    st.error(f"Lỗi: {e}")
-        else:
-            file_batch = st.file_uploader(
-                "📁 Chọn file batch (.csv hoặc .xlsx):",
-                type=["csv", "xlsx"],
-                accept_multiple_files=False
-            )
-            if file_batch:
-                try:
-                    if file_batch.name.endswith('.csv'):
-                        df_batch = pd.read_csv(file_batch)
-                    elif file_batch.name.endswith('.xlsx'):
-                        df_batch = pd.read_excel(file_batch)
+                    # Ngưỡng lọc tiềm năng
+                    threshold = st.slider("🎯 Ngưỡng lọc khách tiềm năng (%)", 0, 100, 70, step=5) / 100
+                    df_potential = df_batch[probs >= threshold]
 
-                    preds = model.predict(df_batch)
-                    df_batch['Dự đoán'] = ["Có mở" if p==1 else "Không mở" for p in preds]
-                    st.dataframe(df_batch)
-                    csv = df_batch.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("📥 Tải kết quả", data=csv, file_name="ketqua_batch.csv", mime="text/csv")
+                    if not df_potential.empty:
+                        st.subheader("✅ Danh sách khách hàng tiềm năng cần gọi:")
+                        st.dataframe(df_potential)
+
+                        csv_potential = df_potential.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+                        st.download_button("📥 Tải danh sách khách tiềm năng", data=csv_potential, file_name="khach_tiem_nang.csv", mime="text/csv")
+                    else:
+                        st.info("Không có khách nào vượt ngưỡng đã chọn.")
+
+                    # Tải toàn bộ
+                    csv_all = df_batch.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+                    st.download_button("📥 Tải toàn bộ kết quả", data=csv_all, file_name="ketqua_batch.csv", mime="text/csv")
+
                 except Exception as e:
-                    st.error(f"Lỗi: {e}")
+                    st.error(f"❌ Lỗi khi xử lý file batch: {e}")
+
+
+
     elif page == "🔬 So sánh":
         st.subheader("🔬 So sánh thực tế vs dự đoán")
 
@@ -556,6 +585,8 @@ def main():
                 st.error(f"Lỗi xử lý: {e}")
     elif page == "📈 Theo dõi mô hình":
             monitor.render_log_page()
+    elif page == "📉 Hiệu quả chiến dịch":
+        render_campaign_analysis()
 # 🧩 Phân tích EDA tự động--------------------        
     elif page == "🧩 Phân tích EDA tự động":
         st.subheader("🧩 Auto-EDA với YData Profiling")
@@ -570,10 +601,19 @@ def main():
             st.warning("⛔ Bạn cần nạp dữ liệu trước để phân tích.")
 
     elif page == "📈 Model comparison":
-        # Ép y_train và y_test thành int nếu đang ở dạng float
-        st.session_state.y_train = st.session_state.y_train.astype(int)
-        st.session_state.y_test = st.session_state.y_test.astype(int)
+        start = time.time()
+
+        if "y_train" in st.session_state:
+            st.session_state.y_train = st.session_state.y_train.astype(int)
+        if "y_test" in st.session_state:
+            st.session_state.y_test = st.session_state.y_test.astype(int)
+
         model_compare.render_comparison_page()
+
+        # Lưu thời gian vào session_state
+        st.session_state["model_compare_duration"] = time.time() - start
+
+
 
 if __name__ == '__main__':
     main()
